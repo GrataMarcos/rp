@@ -1,5 +1,11 @@
-node_modules/
+__pycache__/
+*.pyc
+*.pyo
 .env
 credentials.json
-*.log
+package/
+lambda.zip
 .DS_Store
+*.egg-info/
+.venv/
+venv/
