@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+data/chroma_db/
+data/documents/*
+!data/documents/.gitkeep
+.venv/
+venv/
+env/
+*.egg-info/
+.DS_Store
+dist/
+build/
+*.log
