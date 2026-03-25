@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, LayoutDashboard, ArrowLeftRight, LineChart, Settings, LogOut, MessageCircle } from 'lucide-react'
+import { TrendingUp, LayoutDashboard, ArrowLeftRight, LineChart, Settings, LogOut, MessageCircle, Users, Bell } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -16,6 +16,8 @@ interface SidebarProps {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, levels: ['basico', 'intermedio', 'avanzado'] },
   { href: '/transactions', label: 'Transacciones', icon: ArrowLeftRight, levels: ['basico', 'intermedio', 'avanzado'] },
+  { href: '/groups', label: 'Grupos', icon: Users, levels: ['basico', 'intermedio', 'avanzado'] },
+  { href: '/reminders', label: 'Recordatorios', icon: Bell, levels: ['basico', 'intermedio', 'avanzado'] },
   { href: '/investments', label: 'Inversiones', icon: LineChart, levels: ['avanzado'] },
   { href: '/settings', label: 'Configuración', icon: Settings, levels: ['basico', 'intermedio', 'avanzado'] },
 ]

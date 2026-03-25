@@ -5,8 +5,10 @@ import { SummaryCards } from '@/components/dashboard/SummaryCards'
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions'
 import { CategoryChart } from '@/components/dashboard/CategoryChart'
 import { MonthlyChart } from '@/components/dashboard/MonthlyChart'
+import { MarketWidget } from '@/components/dashboard/MarketWidget'
+import { UpcomingReminders } from '@/components/dashboard/UpcomingReminders'
 import { AddTransactionButton } from '@/components/transactions/AddTransactionButton'
-import type { Profile, Transaction, CategorySummary, MonthlySummary } from '@/types'
+import type { Profile, Transaction, CategorySummary, MonthlySummary, Reminder, MarketWidget as MarketWidgetType } from '@/types'
 import { formatDate } from '@/lib/utils'
 
 async function getDashboardData(userId: string, profile: Profile) {
@@ -106,6 +108,24 @@ async function getDashboardData(userId: string, profile: Profile) {
   return { income, expenses, savings, recentTxs: recentTxs ?? [], categoryData, monthlyData }
 }
 
+async function getUpcomingReminders(userId: string): Promise<Reminder[]> {
+  const supabase = createClient()
+  const today = new Date()
+  const in14 = new Date(today)
+  in14.setDate(in14.getDate() + 14)
+
+  const { data } = await supabase
+    .from('reminders')
+    .select('*, group:groups(id, name)')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .lte('next_due_date', in14.toISOString().split('T')[0])
+    .order('next_due_date', { ascending: true })
+    .limit(5)
+
+  return (data ?? []) as Reminder[]
+}
+
 export default async function DashboardPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -119,9 +139,14 @@ export default async function DashboardPage() {
 
   if (!profile) redirect('/auth/login')
 
-  const { income, expenses, savings, recentTxs, categoryData, monthlyData } = await getDashboardData(user.id, profile)
+  const [dashData, upcomingReminders] = await Promise.all([
+    getDashboardData(user.id, profile),
+    getUpcomingReminders(user.id),
+  ])
 
+  const { income, expenses, savings, recentTxs, categoryData, monthlyData } = dashData
   const monthLabel = formatDate(format(new Date(), 'yyyy-MM-dd'), 'MMMM yyyy')
+  const marketWidgets = (profile.market_widgets ?? ['usd', 'cauciones', 'cedears']) as MarketWidgetType[]
 
   return (
     <div className="space-y-6">
@@ -158,6 +183,17 @@ export default async function DashboardPage() {
         transactions={recentTxs as Transaction[]}
         currency={profile.default_currency}
       />
+
+      {/* Bottom section: reminders + market */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Upcoming reminders - all levels */}
+        <UpcomingReminders reminders={upcomingReminders} defaultCurrency={profile.default_currency} />
+
+        {/* Market widget - intermediate+ */}
+        {profile.experience_level !== 'basico' && marketWidgets.length > 0 && (
+          <MarketWidget widgets={marketWidgets} />
+        )}
+      </div>
 
       {/* WhatsApp tip */}
       <div className="card p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">

@@ -2,25 +2,30 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { ArrowUpRight, ArrowDownRight, Trash2, MessageCircle, Filter } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Trash2, Pencil, MessageCircle, Filter } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
-import type { Transaction, Category, Currency } from '@/types'
+import type { Transaction, Category, Currency, Group } from '@/types'
 import { format, subMonths } from 'date-fns'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { EditTransactionModal } from './EditTransactionModal'
 
 interface TransactionListProps {
   transactions: Transaction[]
   categories: Category[]
+  groups: Group[]
   currency: Currency
   currentType: string
   currentMonth: string
 }
 
-export function TransactionList({ transactions, categories, currency, currentType, currentMonth }: TransactionListProps) {
+export function TransactionList({ transactions, categories, groups, currency, currentType, currentMonth }: TransactionListProps) {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<Transaction | null>(null)
 
   // Generate last 6 months for filter
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -35,11 +40,12 @@ export function TransactionList({ transactions, categories, currency, currentTyp
     router.push(`${pathname}?${sp.toString()}`)
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('¿Eliminár esta transacción?')) return
-    setDeletingId(id)
-    await supabase.from('transactions').delete().eq('id', id)
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeletingId(deleteTarget.id)
+    await supabase.from('transactions').delete().eq('id', deleteTarget.id)
     setDeletingId(null)
+    setDeleteTarget(null)
     router.refresh()
   }
 
@@ -159,14 +165,22 @@ export function TransactionList({ transactions, categories, currency, currentTyp
                         )}
                       </div>
 
-                      {/* Delete */}
-                      <button
-                        onClick={() => handleDelete(tx.id)}
-                        disabled={deletingId === tx.id}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all ml-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {/* Actions */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all ml-1">
+                        <button
+                          onClick={() => setEditTarget(tx)}
+                          className="p-1.5 text-slate-300 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(tx)}
+                          disabled={deletingId === tx.id}
+                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -174,6 +188,28 @@ export function TransactionList({ transactions, categories, currency, currentTyp
             ))}
         </div>
       )}
+
+      {/* Edit modal */}
+      {editTarget && (
+        <EditTransactionModal
+          transaction={editTarget}
+          categories={categories}
+          groups={groups}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Eliminar transacción"
+        message={`¿Eliminás "${deleteTarget?.description ?? (deleteTarget?.type === 'income' ? 'Ingreso' : 'Gasto')}" por ${deleteTarget ? formatCurrency(deleteTarget.amount, deleteTarget.currency as Currency) : ''}?`}
+        confirmLabel="Eliminar"
+        destructive
+        loading={!!deletingId}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

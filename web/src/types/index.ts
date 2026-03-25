@@ -4,6 +4,10 @@ export type Currency = 'ARS' | 'USD' | 'EUR'
 export type InvestmentType = 'stock' | 'bond' | 'crypto' | 'fund' | 'cedear' | 'plazo_fijo' | 'other'
 export type TransactionSource = 'web' | 'whatsapp' | 'import'
 export type AccountType = 'cash' | 'bank' | 'investment' | 'other'
+export type GroupRole = 'owner' | 'admin' | 'member'
+export type InvitationStatus = 'pending' | 'accepted' | 'rejected'
+export type ReminderRecurrence = 'monthly' | 'yearly' | 'one-time'
+export type MarketWidget = 'usd' | 'cauciones' | 'cedears'
 
 export interface Profile {
   id: string
@@ -14,6 +18,7 @@ export interface Profile {
   timezone: string
   whatsapp_phone: string | null
   onboarding_completed: boolean
+  market_widgets: MarketWidget[]
   created_at: string
   updated_at: string
 }
@@ -43,6 +48,7 @@ export interface Account {
 export interface Transaction {
   id: string
   user_id: string
+  group_id: string | null
   account_id: string | null
   category_id: string | null
   type: TransactionType
@@ -55,6 +61,7 @@ export interface Transaction {
   created_at: string
   category?: Category | null
   account?: Account | null
+  group?: Pick<Group, 'id' | 'name'> | null
 }
 
 export interface Investment {
@@ -82,6 +89,87 @@ export interface SavingsGoal {
   target_date: string | null
   is_active: boolean
   created_at: string
+}
+
+// Groups
+export interface Group {
+  id: string
+  name: string
+  description: string | null
+  created_by: string | null
+  is_individual: boolean
+  created_at: string
+  members?: GroupMember[]
+}
+
+export interface GroupMember {
+  id: string
+  group_id: string
+  user_id: string
+  role: GroupRole
+  joined_at: string
+  profile?: Pick<Profile, 'id' | 'full_name' | 'whatsapp_phone'>
+}
+
+export interface GroupInvitation {
+  id: string
+  group_id: string
+  invited_by: string | null
+  email: string
+  status: InvitationStatus
+  token: string
+  expires_at: string
+  created_at: string
+  group?: Pick<Group, 'id' | 'name'>
+  inviter?: Pick<Profile, 'id' | 'full_name'>
+}
+
+// Reminders
+export interface Reminder {
+  id: string
+  group_id: string | null
+  user_id: string
+  title: string
+  description: string | null
+  amount: number | null
+  currency: Currency
+  due_day: number | null
+  recurrence: ReminderRecurrence
+  next_due_date: string | null
+  is_active: boolean
+  notify_whatsapp: boolean
+  notify_days_before: number
+  last_notified_at: string | null
+  created_at: string
+  group?: Pick<Group, 'id' | 'name'> | null
+}
+
+// Market data
+export interface UsdRates {
+  blue: number
+  oficial: number
+  mep: number
+  updated_at: string
+}
+
+export interface CaucionRates {
+  rate_24h: number
+  rate_48h: number
+  rate_72h: number
+  updated_at: string
+}
+
+export interface CedearItem {
+  ticker: string
+  name: string
+  price: number
+  change_pct: number
+}
+
+export interface MarketData {
+  usd?: UsdRates
+  cauciones?: CaucionRates
+  cedears?: { items: CedearItem[]; updated_at: string }
 }
 
 export interface MonthlySummary {

@@ -167,19 +167,154 @@ def get_monthly_summary(user_id: str, year: int, month: int, currency: str) -> d
     return {"income": income, "expenses": expenses, "savings": income - expenses}
 
 
-def get_recent_transactions(user_id: str, limit: int = 5) -> list[dict]:
-    """Return last N transactions for the user."""
+def get_recent_transactions(user_id: str, limit: int = 5, group_id: Optional[str] = None) -> list[dict]:
+    """Return last N transactions for the user (optionally filtered by group)."""
+    params: dict = {
+        "user_id": f"eq.{user_id}",
+        "select": "id,type,amount,currency,description,date,category:categories(name,emoji)",
+        "order": "date.desc,created_at.desc",
+        "limit": limit,
+    }
+    if group_id:
+        params["group_id"] = f"eq.{group_id}"
+
     resp = requests.get(
         _url("transactions"),
         headers=_HEADERS,
-        params={
-            "user_id": f"eq.{user_id}",
-            "select": "type,amount,currency,description,date,category:categories(name,emoji)",
-            "order": "date.desc,created_at.desc",
-            "limit": limit,
-        },
+        params=params,
         timeout=10,
     )
     if resp.status_code == 200:
         return resp.json()
     return []
+
+
+# ─── Group helpers ────────────────────────────────────────────────────────────
+
+def get_user_groups(user_id: str) -> list[dict]:
+    """Return all groups the user is a member of."""
+    resp = requests.get(
+        _url("group_members"),
+        headers=_HEADERS,
+        params={
+            "user_id": f"eq.{user_id}",
+            "select": "group_id,role,group:groups(id,name,is_individual)",
+        },
+        timeout=10,
+    )
+    if resp.status_code == 200:
+        rows = resp.json()
+        return [
+            {
+                "id": r["group"]["id"],
+                "name": r["group"]["name"],
+                "is_individual": r["group"]["is_individual"],
+                "role": r["role"],
+            }
+            for r in rows
+            if r.get("group")
+        ]
+    return []
+
+
+def get_individual_group_id(user_id: str) -> Optional[str]:
+    """Return the user's individual (personal) group id."""
+    groups = get_user_groups(user_id)
+    for g in groups:
+        if g["is_individual"]:
+            return g["id"]
+    return None
+
+
+def save_transaction_to_group(
+    user_id: str,
+    group_id: Optional[str],
+    transaction_type: str,
+    amount: float,
+    currency: str,
+    description: Optional[str],
+    category_name: Optional[str],
+    date: str,
+) -> Optional[dict]:
+    """Insert a transaction with an optional group_id."""
+    category_id = find_category_id(user_id, category_name) if category_name else None
+
+    payload = {
+        "user_id": user_id,
+        "group_id": group_id,
+        "type": transaction_type,
+        "amount": round(float(amount), 2),
+        "currency": currency.upper(),
+        "description": description or None,
+        "category_id": category_id,
+        "date": date,
+        "source": "whatsapp",
+    }
+
+    resp = requests.post(
+        _url("transactions"),
+        headers=_HEADERS,
+        json=payload,
+        timeout=10,
+    )
+
+    if resp.status_code in (200, 201):
+        rows = resp.json()
+        return rows[0] if rows else payload
+
+    logger.error("Supabase transaction insert failed: %s %s", resp.status_code, resp.text)
+    return None
+
+
+def delete_transaction(transaction_id: str, user_id: str) -> bool:
+    """Delete a transaction owned by this user."""
+    resp = requests.delete(
+        _url("transactions"),
+        headers=_HEADERS,
+        params={"id": f"eq.{transaction_id}", "user_id": f"eq.{user_id}"},
+        timeout=10,
+    )
+    return resp.status_code in (200, 204)
+
+
+# ─── Reminders (for notifier Lambda) ─────────────────────────────────────────
+
+def get_due_reminders(days_ahead: int = 3) -> list[dict]:
+    """
+    Return active reminders due within `days_ahead` days that haven't been notified today.
+    Used by the reminders_notifier Lambda.
+    """
+    from datetime import datetime, timedelta
+    today = datetime.utcnow().date()
+    cutoff = today + timedelta(days=days_ahead)
+
+    resp = requests.get(
+        _url("reminders"),
+        headers=_HEADERS,
+        params={
+            "is_active": "eq.true",
+            "notify_whatsapp": "eq.true",
+            "next_due_date": f"lte.{cutoff.isoformat()}",
+            "select": "id,title,amount,currency,next_due_date,notify_days_before,recurrence,user_id,profile:profiles(whatsapp_phone)",
+        },
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        return resp.json()
+    logger.error("get_due_reminders failed: %s", resp.text)
+    return []
+
+
+def update_reminder_after_notification(reminder_id: str, next_due_date: str) -> None:
+    """Mark reminder as notified and set next due date."""
+    from datetime import datetime, timezone
+    requests.patch(
+        _url("reminders"),
+        headers={**_HEADERS, "Prefer": "return=minimal"},
+        params={"id": f"eq.{reminder_id}"},
+        json={
+            "last_notified_at": datetime.now(timezone.utc).isoformat(),
+            "next_due_date": next_due_date,
+        },
+        timeout=10,
+    )

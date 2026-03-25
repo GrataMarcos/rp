@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, Save, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ExperienceLevel, Currency, Profile } from '@/types'
+import type { ExperienceLevel, Currency, Profile, MarketWidget } from '@/types'
 
 const levels: { id: ExperienceLevel; title: string; emoji: string; desc: string }[] = [
   { id: 'basico', title: 'Básico', emoji: '🌱', desc: 'Solo lo esencial: ingresos, gastos y ahorro' },
@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState<Currency>('ARS')
   const [fullName, setFullName] = useState('')
   const [whatsappPhone, setWhatsappPhone] = useState('')
+  const [marketWidgets, setMarketWidgets] = useState<MarketWidget[]>(['usd', 'cauciones', 'cedears'])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -49,6 +50,7 @@ export default function SettingsPage() {
         setCurrency(data.default_currency)
         setFullName(data.full_name ?? '')
         setWhatsappPhone(data.whatsapp_phone ?? '')
+        setMarketWidgets(data.market_widgets ?? ['usd', 'cauciones', 'cedears'])
       }
       setLoading(false)
     }
@@ -68,6 +70,7 @@ export default function SettingsPage() {
       default_currency: currency,
       full_name: fullName || null,
       whatsapp_phone: whatsappPhone || null,
+      market_widgets: marketWidgets,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id)
 
@@ -163,6 +166,41 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+
+        {/* Market widgets (intermediate+) */}
+        {level !== 'basico' && (
+          <div className="card p-5">
+            <h2 className="font-semibold text-slate-900 mb-1">Widgets de mercado</h2>
+            <p className="text-sm text-slate-500 mb-4">Seleccioná qué datos ver en el Dashboard</p>
+            <div className="space-y-2">
+              {([
+                { id: 'usd' as MarketWidget, label: 'Dólar (blue, oficial, MEP)', emoji: '💵' },
+                { id: 'cauciones' as MarketWidget, label: 'Cauciones BYMA (24/48/72hs)', emoji: '📊' },
+                { id: 'cedears' as MarketWidget, label: 'CEDEARs (top 5)', emoji: '📈' },
+              ]).map(w => (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => {
+                    setMarketWidgets(prev =>
+                      prev.includes(w.id) ? prev.filter(x => x !== w.id) : [...prev, w.id]
+                    )
+                  }}
+                  className={cn(
+                    'w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-3',
+                    marketWidgets.includes(w.id)
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  )}
+                >
+                  <span className="text-xl">{w.emoji}</span>
+                  <span className="flex-1 text-sm font-medium text-slate-700">{w.label}</span>
+                  {marketWidgets.includes(w.id) && <CheckCircle className="w-4 h-4 text-primary-600" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* WhatsApp */}
         <div className="card p-5">

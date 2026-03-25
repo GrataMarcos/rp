@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { TransactionList } from '@/components/transactions/TransactionList'
 import { AddTransactionButton } from '@/components/transactions/AddTransactionButton'
-import type { Profile, Transaction, Category } from '@/types'
+import type { Profile, Transaction, Category, Group } from '@/types'
 
 export default async function TransactionsPage({
   searchParams,
@@ -26,6 +26,12 @@ export default async function TransactionsPage({
     .select('*')
     .eq('user_id', user.id)
     .order('name')
+
+  const { data: memberships } = await supabase
+    .from('group_members')
+    .select('group:groups(id, name, is_individual)')
+    .eq('user_id', user.id)
+  const groups = (memberships ?? []).map(m => m.group as unknown as Group).filter(Boolean)
 
   // Build query
   let query = supabase
@@ -68,6 +74,7 @@ export default async function TransactionsPage({
       <TransactionList
         transactions={(transactions ?? []) as Transaction[]}
         categories={(categories ?? []) as Category[]}
+        groups={groups}
         currency={profile.default_currency}
         currentType={searchParams.type ?? 'all'}
         currentMonth={searchParams.month ?? ''}

@@ -1,64 +1,97 @@
 """
-Sesiones de conversación respaldadas por DynamoDB.
-
-Tabla requerida:
-  Nombre : ExpenseBotData  (configurable via env DYNAMODB_TABLE)
-  PK     : pk  (String)
-  TTL    : ttl (Number)  — habilitar en DynamoDB → Table → Additional settings
+Sesiones de conversación respaldadas por Supabase (tabla whatsapp_sessions).
+Usa el service role key para bypasear RLS — mismo patrón que supabase_service.py.
 """
 
 import json
+import logging
 import os
-import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-import boto3
-from boto3.dynamodb.conditions import Key
+import requests
 
-_TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "ExpenseBotData")
-_SESSION_TTL = int(os.environ.get("SESSION_TTL_SECONDS", "1800"))  # 30 min
+logger = logging.getLogger(__name__)
 
-_dynamodb = boto3.resource("dynamodb")
-_table = _dynamodb.Table(_TABLE_NAME)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", "1800"))
+
+_HEADERS = {
+    "Content-Type": "application/json",
+    "apikey": SUPABASE_SERVICE_KEY,
+    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    "Prefer": "return=representation",
+}
 
 
-def _session_pk(phone: str) -> str:
-    return f"session#{phone}"
+def _url() -> str:
+    return f"{SUPABASE_URL}/rest/v1/whatsapp_sessions"
 
 
 def get_session(phone: str) -> dict:
+    """Retrieve session state for a phone number."""
     try:
-        resp = _table.get_item(Key={"pk": _session_pk(phone)})
-        item = resp.get("Item")
-        if not item:
-            return {"state": "idle", "pending_expense": None}
-        return {
-            "state": item.get("state", "idle"),
-            "pending_expense": json.loads(item["pending_expense"])
-            if item.get("pending_expense")
-            else None,
-        }
+        resp = requests.get(
+            _url(),
+            headers=_HEADERS,
+            params={"phone": f"eq.{phone}", "select": "state,pending_data,expires_at", "limit": 1},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            rows = resp.json()
+            if rows:
+                row = rows[0]
+                # Check expiry
+                expires_at = row.get("expires_at", "")
+                if expires_at:
+                    exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    if exp <= datetime.now(timezone.utc):
+                        clear_session(phone)
+                        return {"state": "idle", "pending_expense": None}
+                return {
+                    "state": row.get("state", "idle"),
+                    "pending_expense": row.get("pending_data"),
+                }
     except Exception as e:
-        print(f"[session] get_session error: {e}")
-        return {"state": "idle", "pending_expense": None}
+        logger.error("get_session error: %s", e)
+    return {"state": "idle", "pending_expense": None}
 
 
 def set_session(phone: str, session: dict) -> None:
+    """Upsert session state for a phone number."""
     try:
-        _table.put_item(
-            Item={
-                "pk": _session_pk(phone),
-                "state": session["state"],
-                "pending_expense": json.dumps(session.get("pending_expense")),
-                "ttl": int(time.time()) + _SESSION_TTL,
-            }
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)
+        ).isoformat()
+
+        payload = {
+            "phone": phone,
+            "state": session["state"],
+            "pending_data": session.get("pending_expense"),
+            "expires_at": expires_at,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Upsert (insert or update on conflict)
+        requests.post(
+            _url(),
+            headers={**_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
+            json=payload,
+            timeout=5,
         )
     except Exception as e:
-        print(f"[session] set_session error: {e}")
+        logger.error("set_session error: %s", e)
 
 
 def clear_session(phone: str) -> None:
+    """Delete session for a phone number."""
     try:
-        _table.delete_item(Key={"pk": _session_pk(phone)})
+        requests.delete(
+            _url(),
+            headers=_HEADERS,
+            params={"phone": f"eq.{phone}"},
+            timeout=5,
+        )
     except Exception as e:
-        print(f"[session] clear_session error: {e}")
+        logger.error("clear_session error: %s", e)
