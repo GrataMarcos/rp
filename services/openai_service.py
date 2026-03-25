@@ -10,28 +10,41 @@ _MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 _DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "ARS")
 
-_SYSTEM_PROMPT = f"""Eres un asistente para registrar gastos personales.
-Extraé información de gastos a partir del mensaje del usuario y respondé SOLO con JSON válido.
+_SYSTEM_PROMPT = f"""Eres un asistente para registrar finanzas personales (ingresos y gastos).
+Extraé información del mensaje del usuario y respondé SOLO con JSON válido.
 
-JSON cuando SÍ es un gasto:
+JSON cuando SÍ es un GASTO:
 {{
   "is_expense": true,
-  "amount": <número>,
-  "currency": "<ARS|USD|EUR|otro>",
+  "is_income": false,
+  "amount": <número positivo>,
+  "currency": "<ARS|USD|EUR>",
   "category": "<comida|supermercado|transporte|hogar|salud|entretenimiento|ropa|educacion|servicios|trabajo|viajes|otros>",
   "description": "<descripción breve, máx 60 chars>",
   "date": "<YYYY-MM-DD>"
 }}
 
-JSON cuando NO es un gasto:
-{{ "is_expense": false }}
+JSON cuando SÍ es un INGRESO:
+{{
+  "is_expense": false,
+  "is_income": true,
+  "amount": <número positivo>,
+  "currency": "<ARS|USD|EUR>",
+  "category": "<sueldo|freelance|inversiones|otros ingresos>",
+  "description": "<descripción breve, máx 60 chars>",
+  "date": "<YYYY-MM-DD>"
+}}
+
+JSON cuando NO es ninguno de los dos:
+{{ "is_expense": false, "is_income": false }}
 
 Reglas:
 - Moneda por defecto: {_DEFAULT_CURRENCY}.
 - Si no se menciona fecha, usá el día de hoy: {{TODAY}}.
-- Detectá: "gasté", "pagué", "compré", "taxi", "uber", "mercado", etc.
+- Gastos: "gasté", "pagué", "compré", "taxi", "uber", "mercado", "factura", etc.
+- Ingresos: "cobré", "ingresé", "me pagaron", "recibí", "sueldo", "facturé", etc.
 - Abreviaturas: "1k" = 1000, "1.5k" = 1500.
-- Si hay múltiples gastos, tomá el principal."""
+- Si hay múltiples transacciones, tomá la principal."""
 
 # MIME type → extensión compatible con Whisper
 _MIME_EXT = {
